@@ -23,20 +23,31 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import com.google.common.util.concurrent.RateLimiter;
 
 public class WeiboScraper {
-    private static final int USER_ID = 123456; // Replace with your user ID
-    private static final String COOKIE = "YOUR_COOKIE"; // Replace with your cookie
+    private static final int USER_ID = Integer.parseInt(System.getenv("WEIBO_USER_ID"));
+    private static final String COOKIE = System.getenv("WEIBO_COOKIE");
     private static final Pattern ORIPIC_PATTERN = Pattern.compile("^http://weibo.cn/mblog/oripic");
     private static final Pattern PICALL_PATTERN = Pattern.compile("^http://weibo.cn/mblog/picAll");
     private static final Logger logger = LoggerFactory.getLogger(WeiboScraper.class);
+    private static final RateLimiter rateLimiter = RateLimiter.create(1.0); // 1 request per second
+
+    static {
+        if (System.getenv("WEIBO_USER_ID") == null || System.getenv("WEIBO_COOKIE") == null) {
+            throw new IllegalStateException("Required environment variables WEIBO_USER_ID and WEIBO_COOKIE must be set");
+        }
+    }
 
     public static void main(String[] args) {
         scrapeWeibo(USER_ID, COOKIE);
     }
 
     public static void scrapeWeibo(int userId, String cookie) {
-        String url = "http://weibo.cn/u/" + userId + "?filter=1&page=1";
+        String encodedUserId = URLEncoder.encode(String.valueOf(userId), StandardCharsets.UTF_8);
+        String url = "https://weibo.cn/u/" + encodedUserId + "?filter=1&page=1";
         String html = getHtml(url, cookie);
 
         Document doc = Jsoup.parse(html);
@@ -45,7 +56,8 @@ public class WeiboScraper {
         // ... (continue with the rest of the code)
     }
 
-    private static String getHtml(String url, String cookie) {
+    public static String getHtml(String url, String cookie) {
+        rateLimiter.acquire(); // Wait for permission
         if (url == null || cookie == null) {
             throw new IllegalArgumentException("URL and cookie cannot be null");
         }
@@ -69,7 +81,9 @@ public class WeiboScraper {
             try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
                 content = new String(response.getEntity().getContent().readAllBytes());
             } catch (IOException e) {
-                e.printStackTrace();
+                logger.error("Failed to execute HTTP request: {}", e.getMessage());
+                logger.debug("Detailed error: ", e);
+                throw new WeiboScraperException("Failed to retrieve data", e);
             }
 
             return content;

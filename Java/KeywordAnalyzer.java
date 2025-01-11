@@ -18,6 +18,7 @@ public class KeywordAnalysis {
     private static final String NAME_FILE = "name.txt";
     private static final String ENCODING = "UTF-8";
     private static final int MIN_WORD_LENGTH = 2;
+    private static final Pattern SAFE_FILE_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]+$");
 
     public static void main(String[] args) throws IOException {
         String userId = "YOUR_USER_ID"; // Replace with your user ID
@@ -25,6 +26,20 @@ public class KeywordAnalysis {
     }
 
     public static void analyzeKeywords(String userId) throws IOException {
+        // Validate userId to prevent path traversal
+        if (!SAFE_FILE_PATTERN.matcher(userId).matches()) {
+            throw new IllegalArgumentException("Invalid user ID format");
+        }
+        
+        // Use Path for safer file operations
+        Path userFile = Paths.get(System.getProperty("user.dir"), "data", userId)
+            .normalize();
+        
+        // Verify the file is within allowed directory
+        if (!userFile.startsWith(Paths.get(System.getProperty("user.dir"), "data"))) {
+            throw new SecurityException("Access denied: Invalid file path");
+        }
+        
         File f = new File(userId);
         File f1 = new File(CATEGORY_FILE);
         File f2 = new File(EXPRESS_FILE);
