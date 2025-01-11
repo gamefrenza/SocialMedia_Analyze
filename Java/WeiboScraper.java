@@ -21,12 +21,15 @@ import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WeiboScraper {
     private static final int USER_ID = 123456; // Replace with your user ID
     private static final String COOKIE = "YOUR_COOKIE"; // Replace with your cookie
     private static final Pattern ORIPIC_PATTERN = Pattern.compile("^http://weibo.cn/mblog/oripic");
     private static final Pattern PICALL_PATTERN = Pattern.compile("^http://weibo.cn/mblog/picAll");
+    private static final Logger logger = LoggerFactory.getLogger(WeiboScraper.class);
 
     public static void main(String[] args) {
         scrapeWeibo(USER_ID, COOKIE);
@@ -43,30 +46,36 @@ public class WeiboScraper {
     }
 
     private static String getHtml(String url, String cookie) {
+        if (url == null || cookie == null) {
+            throw new IllegalArgumentException("URL and cookie cannot be null");
+        }
         // Create an HTTP client with the given cookie
         CookieStore cookieStore = new BasicCookieStore();
-        CloseableHttpClient httpClient = HttpClients.custom()
+        try (CloseableHttpClient httpClient = HttpClients.custom()
                 .setDefaultCookieStore(cookieStore)
-                .build();
+                .build()) {
+            // Set up the HTTP GET request
+            HttpGet httpGet = new HttpGet(url);
+            httpGet.setHeader("Cookie", cookie);
+            RequestConfig requestConfig = RequestConfig.custom()
+                    .setConnectTimeout(5000)
+                    .setConnectionRequestTimeout(5000)
+                    .setSocketTimeout(5000)
+                    .build();
+            httpGet.setConfig(requestConfig);
 
-        // Set up the HTTP GET request
-        HttpGet httpGet = new HttpGet(url);
-        httpGet.setHeader("Cookie", cookie);
-        RequestConfig requestConfig = RequestConfig.custom()
-                .setConnectTimeout(5000)
-                .setConnectionRequestTimeout(5000)
-                .setSocketTimeout(5000)
-                .build();
-        httpGet.setConfig(requestConfig);
+            // Execute the HTTP GET request and retrieve the content
+            String content = null;
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                content = new String(response.getEntity().getContent().readAllBytes());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
-        // Execute the HTTP GET request and retrieve the content
-        String content = null;
-        try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
-            content = new String(response.getEntity().getContent().readAllBytes());
+            return content;
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Failed to scrape Weibo: ", e);
+            return null;
         }
-
-        return content;
     }
 }
