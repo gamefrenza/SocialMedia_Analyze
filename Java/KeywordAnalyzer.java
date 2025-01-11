@@ -10,6 +10,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.nio.file.attribute.PosixFilePermission;
 
 public class KeywordAnalysis {
     private static final String CATEGORY_FILE = "category.txt";
@@ -19,6 +20,12 @@ public class KeywordAnalysis {
     private static final String ENCODING = "UTF-8";
     private static final int MIN_WORD_LENGTH = 2;
     private static final Pattern SAFE_FILE_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]+$");
+    private static final long MAX_FILE_SIZE = 10_000_000; // 10MB
+    private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
+        "text/plain",
+        "application/json",
+        "text/csv"
+    );
 
     public static void main(String[] args) throws IOException {
         String userId = "YOUR_USER_ID"; // Replace with your user ID
@@ -109,5 +116,42 @@ public class KeywordAnalysis {
         } catch (Exception e) {
             logger.error("Error writing results", e);
         }
+    }
+
+    private static void checkFilePermissions(Path filePath) {
+        if (!Files.isReadable(filePath)) {
+            throw new SecurityException("Cannot read file: " + filePath);
+        }
+        
+        try {
+            Set<PosixFilePermission> perms = Files.getPosixFilePermissions(filePath);
+            if (perms.contains(PosixFilePermission.OTHERS_WRITE) || 
+                perms.contains(PosixFilePermission.OTHERS_EXECUTE)) {
+                throw new SecurityException("Unsafe file permissions: " + filePath);
+            }
+        } catch (IOException e) {
+            logger.error("Failed to check file permissions: ", e);
+            throw new SecurityException("Cannot verify file permissions: " + filePath);
+        }
+    }
+
+    private static void secureFileOperations(Path filePath) {
+        // Check file size
+        if (Files.size(filePath) > MAX_FILE_SIZE) {
+            throw new SecurityException("File size exceeds maximum allowed size");
+        }
+        
+        // Verify file type
+        String mimeType = Files.probeContentType(filePath);
+        if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
+            throw new SecurityException("Invalid file type");
+        }
+        
+        // Set secure file permissions
+        Set<PosixFilePermission> perms = EnumSet.of(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE
+        );
+        Files.setPosixFilePermissions(filePath, perms);
     }
 }
